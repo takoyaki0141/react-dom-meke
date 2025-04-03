@@ -1,437 +1,91 @@
-exports.fetchAllProjects = async (req, res) => {
-    try {
-        const results = await Project.fetchAllProjects();
-
-        // project_idごとにデータをまとめる
-        const projectMap = {};
-
-        results.forEach(row => {
-            const { project_id, project_title, start_date, end_date, status_id, finished_at, ins_by, upd_by, user_id, user_name } = row;
-
-            if (!projectMap[project_id]) {
-                projectMap[project_id] = {
-                    project_id,
-                    project_title,
-                    start_date,
-                    end_date,
-                    status_id,
-                    finished_at,
-                    ins_by,
-                    upd_by,
-                    project_members: []
-                };
-            }
-
-            // user_id が null でない場合のみ追加
-            if (user_id) {
-                projectMap[project_id].project_members.push({
-                    user_id,
-                    user_name
-                });
-            }
-        });
-
-        return res.json(Object.values(projectMap));
-    } catch (error) {
-        return res.status(500).json({ error: error.message });
-    }
-};
-
----------------------------------------------
-
-question.php
-
-public function postAns($urlId, $qNum, $postedAns) {
-    try {
-        // 安全なカラム名のリスト
-        $columns = ['ans1', 'ans2', 'ans3', 'ans4'];
-        $column = $columns[$qNum - 1] ?? null; // 1-based index
-
-        if ($column === null) {
-            return ["status" => "error", "message" => "Invalid question number"];
-        }
-
-        $sql = "INSERT INTO user_answer (url_id, $column) 
-                VALUES (:url_id, :answer) 
-                ON CONFLICT(url_id) DO UPDATE 
-                SET $column = EXCLUDED.$column";
-
-        $stmt = $this->dbh->prepare($sql);
-        $params = [':url_id' => $urlId, ':answer' => $postedAns];
-        $stmt->execute($params);
-
-        return ["status" => "success", "message" => "Answer recorded successfully"];
-
-    } catch (PDOException $e) {
-        return ["status" => "error", "message" => "postAns error: " . $e->getMessage()];
-    }
-}
-
-function.php
-
-case 'postAns':
-    $urlId = $_GET['id'] ?? '';
-    $qNum = $_GET['q_num'] ?? '';  
-
-    // JSONで送られた場合の処理
-    $inputJson = file_get_contents('php://input');
-    $post = json_decode($inputJson, true);
-    
-    // JSONがパースできなかった場合の対策
-    if (!isset($post['input-answer'])) {
-        echo json_encode(["status" => "error", "message" => "Invalid input data"]);
-        exit;
-    }
-
-    $postedAns = $post['input-answer'];
-
-    $res = $qControl->postAns($urlId, $qNum, $postedAns);
-    echo json_encode($res);
-    break;
-
-
----
-js
-
-postAnsForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    await postAns('testtakahashi', 1);
-});
-
-async function postAns(urlId, qNum) {
-    const formData = new FormData(postAnsForm);
-    const jsonData = {
-        "input-answer": formData.get("input-answer") // JSONで送信
-    };
-
-    try {
-        const url = `../../backend/function.php?func=postAns&id=${urlId}&q_num=${qNum}`;
-        const res = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(jsonData)
-        });
-
-        console.log(await res.json());
-
-    } catch (error) {
-        console.error(error);
-    }
-}
-
-参考
-try {
-    $function = $_GET['func'] ?? '';
-
-    switch ($function) {
-        case 'postAns':
-            // **パラメータのバリデーション**
-            $urlId = $_GET['id'] ?? null;
-            $qNum = $_GET['q_num'] ?? null;
-            if (!$urlId || !is_numeric($qNum) || $qNum < 1 || $qNum > 4) {
-                echo json_encode(["status" => "error", "message" => "Invalid parameters"]);
-                exit;
-            }
-
-            // **JSONデータの取得とバリデーション**
-            $inputJson = file_get_contents('php://input');
-            $post = json_decode($inputJson, true);
-            if (!isset($post['input-answer'])) {
-                echo json_encode(["status" => "error", "message" => "Missing answer"]);
-                exit;
-            }
-            $postedAns = trim($post['input-answer']);
-
-
-ーーーーーーーーーーーーーーーーー
-こっちのほうがいいかも
-
-document.getElementById('post-ans').addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const formData = new FormData(e.target);
-    formData.append("id", "testtakahashi"); // URL ID (仮)
-    formData.append("q_num", 1); // 質問番号 (仮)
-
-    try {
-        const response = await fetch("../../backend/function.php", {
-            method: "POST",
-            body: formData // FormData を直接送信
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        console.log(data);
-        alert(data.message); // 成功メッセージを表示
-
-    } catch (error) {
-        console.error("postAns API error:", error);
-        alert("送信に失敗しました。");
-    }
-});
-
-php
 
 <?php
+date_default_timezone_set('Asia/Tokyo'); // 日本時間に設定
+$file_path = 'schedule.txt';
+$dates = [];
 
-$config = require 'config/dbConfig.php';
-
-header('Content-Type: application/json');
-date_default_timezone_set('Asia/Tokyo');
-
-require './class/database.php';
-require './class/question.php';
-
-$db = new DBconnect(
-    $config['db']['host'],
-    $config['db']['dbname'],
-    $config['db']['username'],
-    $config['db']['password']
-);
-
-$qControl = new Question($db);
-
-try {
-    // POST でリクエストを受け取る
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        $function = $_POST['func'] ?? '';
-
-        switch ($function) {
-            case 'postAns':
-                // **パラメータのバリデーション**
-                $urlId = $_POST['id'] ?? null;
-                $qNum = $_POST['q_num'] ?? null;
-                $postedAns = $_POST['input-answer'] ?? null;
-
-                if (!$urlId || !is_numeric($qNum) || $qNum < 1 || $qNum > 4 || !$postedAns) {
-                    echo json_encode(["status" => "error", "message" => "Invalid parameters"]);
-                    exit;
-                }
-
-                // **データ登録**
-                $res = $qControl->postAns($urlId, $qNum, trim($postedAns));
-                echo json_encode($res);
-                break;
-
-            default:
-                echo json_encode(["status" => "error", "message" => "Invalid function"]);
-        }
-    } else {
-        echo json_encode(["status" => "error", "message" => "Invalid request method"]);
-    }
-} catch (PDOException $e) {
-    echo json_encode(["status" => "error", "message" => "Database error: " . $e->getMessage()]);
-}
------------------------------------------------------
-
-
-
-/* 画面全体の調整 */
-body, html {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    min-height: 100vh;
-    scroll-behavior: smooth;
-    background-color: #00003E;
-    color: #FFFFFF;
-}
-
-/* コンテナの幅を制限しつつレスポンシブ対応 */
-.container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    width: 90%;
-    max-width: 1200px;
-    margin: auto;
-    padding: 20px;
-}
-
-/* タイトル部分のレスポンシブ対応 */
-.content-title {
-    margin-top: 10vh;
-    text-align: center;
-}
-
-.content-title h2 {
-    font-size: 2.5rem;
-}
-.content-title h3 {
-    font-size: 2rem;
-}
-
-/* タブの調整 */
-/* .tabs {
-    margin-top: 3rem;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 5px;
-}
-
-.tab {
-    font-size: 1.2rem;
-    padding: 10px 40px;
-    border: 1px solid #ffffff;
-} */
-
-
-.tabs {
-    margin-top: 9rem;
-    display: flex;
-    flex-wrap: wrap; /* 画面が小さいと折り返す */
-    justify-content: center;
-    width: 100%;
-}
-
-/* 各タブ */
-.tab {
-    font-size: 1.4rem;
-    line-height: 2rem;
-    background-color: #00003E;
-    color: #FFFFFF;
-    border: 1px solid #ffffff;
-    text-align: center;
-    flex-grow: 1; /* 均等に幅を調整 */
-    max-width: 200px; /* タブの最大幅 */
-    min-width: 100px; /* タブの最小幅 */
-    cursor: pointer;
-}
-
-/* タブ内のリンクをタブ全体に広げる */
-.tab a {
-    display: block;
-    width: 100%;
-    height: 100%;
-    text-decoration: none;
-    color: #FFFFFF;
-    padding: 10px; /* クリック範囲を広げる */
-}
-
-/* ホバー時のスタイル */
-.tab:hover {
-    background-color: #000060;
-}
-
-
-
-
-/* メインコンテンツの調整 */
-.content {
-    background-color: rgb(21, 21, 135);
-    padding: 20px;
-    margin-top: 5rem;
-    border-radius: 10px;
-    width: 100%;
-    max-width: 800px;
-}
-
-/* 入力エリア */
-.input-answer {
-    width: 100%;
-    max-width: 600px;
-    font-size: 1.2rem;
-    padding: 1rem;
-}
-
-/* 送信ボタン */
-.submit-button {
-    font-size: 1.2rem;
-    padding: 1rem 3rem;
-}
-
-/* ボタンエリア */
-.btn-area {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 10px;
-    margin-top: 5rem;
-    margin-bottom: 5rem;
-}
-
-.btn {
-    width: auto;
-    min-width: 180px;
-    font-size: 1.2rem;
-    padding: 10px 20px;
-}
-
-/* メディアクエリ */
-@media (max-width: 768px) {
-    .content-title h2 {
-        font-size: 2rem;
-    }
-    .content-title h3 {
-        font-size: 1.5rem;
-    }
-    .tab {
-        padding: 10px 20px;
-    }
-    .question-text {
-        padding: 0 1rem;
-    }
-    .btn-area {
-        flex-direction: column;
+if (file_exists($file_path)) {
+    $lines = file($file_path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        $dates[] = trim($line);
     }
 }
 
+// 受付締切か判定する関数
+function isClosed($event_date) {
+    $date_parts = explode(' ', $event_date);
+    $event_day = $date_parts[0]; // 例: "2025-4-12"
+    
+    $event_timestamp = strtotime($event_day); // イベントの日付をタイムスタンプに変換
+    $deadline_timestamp = strtotime('-2 days', $event_timestamp) + 86399; // 2日前の23:59
+    
+    return time() > $deadline_timestamp; // 現在時刻が締切を超えていたらtrue
+}
 
+// HTMLを生成
+function renderPreferredDays($dates) {
+    foreach ($dates as $index => $date) {
+        $id = "preferred_day" . ($index + 1);
+        $is_closed = isClosed($date);
 
-
-
-const registerProjectMember = async (data) => {
-    if (!data.project_members || data.project_members.length === 0) {
-        return { message: "No project members to register" };
-    }
-
-    const values = data.project_members.map(member => [data.project_id, member.user_id, member.user_name]);
-    const query = `INSERT INTO project_member (project_id, user_id, user_name) VALUES ?`;
-
-    await db.promise().query(query, [values]);
-};
-
-ああ
-
-const upsertProjectMember = async (data, projectId) => {
-    if (!data.project_members || data.project_members.length === 0) {
-        return { message: "No project members to upsert" };
-    }
-
-    // 現状のメンバーを取得
-    const currentMembers = await fetchProjectMembers(projectId);
-    const currentUserIds = currentMembers.map(member => member.user_id);
-
-    const newMembers = data.project_members;
-    const newUserIds = newMembers.map(member => member.user_id);
-
-    // 削除するメンバー (is_deleted=0 → 1)
-    const idsToDelete = currentUserIds.filter(id => !newUserIds.includes(id));
-
-    // 復活させるメンバー (is_deleted=1 → 0)
-    const idsToRestore = newUserIds.filter(id => currentUserIds.includes(id));
-
-    // 削除処理
-    await deleteProjectMembers(projectId, idsToDelete);
-    // 復活処理
-    await restoreProjectMembers(projectId, idsToRestore);
-
-    // 完全新規メンバーの追加 (user_id がまだ登録されていない場合)
-    for (const member of newMembers) {
-        if (!currentUserIds.includes(member.user_id)) {
-            await addProjectMember(projectId, member.user_id, member.user_name);
+        if ($is_closed) {
+            // 受付締切時の表示
+            echo '<strike style="font-size: 1.3rem;">' . htmlspecialchars($date) . '</strike>';
+            echo '<span style="font-size: 1.3rem;">&emsp;<wbr><nobr>受付を締め切りました</nobr></span><br>';
+        } else {
+            // 受付可能な日程
+            echo '<input type="radio" name="preferred_day" id="' . $id . '" value="' . htmlspecialchars($date) . '">';
+            echo '<label for="' . $id . '" class="radio_box">' . htmlspecialchars($date) . '</label><br>';
         }
     }
 
-    return { message: "Successfully upserted project members" };
-};
+    // 別日希望の選択肢
+    echo '<input type="radio" name="preferred_day" id="another_day" value="another_day">';
+    echo '<label for="another_day" class="radio_box">別日開催希望<wbr><nobr>（開催日決まり次第、ご連絡差し上げます）</nobr></label>';
+}
+?>
 
-ああ
-const addProjectMember = async (projectId, userId, userName) => {
-    const query = `INSERT INTO project_member (project_id, user_id, user_name, is_deleted) VALUES (?, ?, ?, 0)`;
-    await db.promise().query(query, [projectId, userId, userName]);
-};
+
+
+
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>日程選択</title>
+</head>
+<body>
+
+<form action="submit.php" method="post">
+    <div class="input_group" id="preferred_day_wrap">
+        <div id="title">
+            参加希望日
+            <span class="txt_red" id="warning">&emsp;※各日程開催の2日前を申込締切とさせて頂きます</span>
+        </div>
+        <div class="txt_red" id="errPreferred_day"></div>
+        <div id="preferred_day" class="test">
+            <?php require 'preferred_days.php'; renderPreferredDays($dates); ?>
+        </div>
+    </div>
+    <button type="submit">送信</button>
+</form>
+
+</body>
+</html>
+
+
+<?php
+if (!empty($_POST['preferred_day'])) {
+    $preferred_day = $_POST['preferred_day'];
+
+    if ($preferred_day === "another_day") {
+        $preferred_day = "別日開催希望";
+    }
+
+    echo "選択された日程: " . htmlspecialchars($preferred_day);
+} else {
+    echo "日程を選択してください。";
+}
+?>
