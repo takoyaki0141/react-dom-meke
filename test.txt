@@ -1,104 +1,21 @@
-public function showRecentProject($fetch_date){
-    try {
-        $this->getSessionValue();
-        $userId = $_SESSION["u_id"];
+function renderPreferredDays($schedules){
+    foreach($schedules as $index => $schedule){
+        $id = "preferred_day" . ($index + 1);
+        $is_closed = isClosed($schedule);
 
-        $sql = "
-            SELECT 
-                DATE_FORMAT(p.upd_date, '%Y-%m-%d') AS grouped_date,
-                p.project_id,
-                p.project_name,
-                p.due_date,
-                p.progress_id,
-                p.created_at,
-                p.comment,
-                p.evidence_filepath,
-                p.sub_filepath,
-                p.finished_at,
-                p.ins_date,
-                p.upd_date,
-                p.is_public,
-                p.creater_id,
-                p.creater_name,
-                pr.progress_status,
-                GROUP_CONCAT(DISTINCT cl.client_id ORDER BY cl.client_id ASC) AS client_ids_str,
-                GROUP_CONCAT(DISTINCT cl.client_name ORDER BY cl.client_id ASC) AS client_names_str,
-                GROUP_CONCAT(DISTINCT co.contractor_id ORDER BY co.contractor_id ASC) AS contractor_ids_str,
-                GROUP_CONCAT(DISTINCT co.contractor_name ORDER BY co.contractor_id ASC) AS contractor_names_str,
-                COUNT(m.milestone_id) AS milestone_sum,
-                SUM(CASE WHEN m.progress_id = 5 THEN 1 ELSE 0 END) AS milestone_fin
-            FROM project p
-            LEFT JOIN client cl ON p.project_id = cl.project_id
-            LEFT JOIN contractor co ON p.project_id = co.project_id
-            LEFT JOIN progress pr ON p.progress_id = pr.progress_id
-            LEFT JOIN milestone m ON p.project_id = m.project_id AND m.progress_id != 7
-            WHERE p.upd_date > (NOW() - INTERVAL :fetch_date DAY)
-              AND (:user_id IN (cl.client_id, co.contractor_id))
-            GROUP BY p.project_id, grouped_date
-            ORDER BY p.upd_date DESC
-        ";
+        $replaced = replaceToHTML($schedule);
+        $scheduleValue = htmlspecialchars($replaced['value'], ENT_QUOTES, 'UTF-8');
+        $scheduleHTML = htmlspecialchars($replaced['html'], ENT_QUOTES, 'UTF-8');
 
-        $params = [
-            ':user_id' => $userId,
-            ':fetch_date' => $fetch_date
-        ];
-
-        $stmt = $this->dbh->prepare($sql);
-        $stmt->execute($params);
-        $rawProjects = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        $groupedProjects = [];
-
-        foreach ($rawProjects as $project) {
-            // 配列化されたクライアント・コントラクター情報
-            $clientIds = $this->convertToArray($project["client_ids_str"]);
-            $clientNames = $this->convertToArray($project["client_names_str"]);
-            $contractorIds = $this->convertToArray($project["contractor_ids_str"]);
-            $contractorNames = $this->convertToArray($project["contractor_names_str"]);
-
-            // client_data / contractor_data の生成
-            $project["client_data"] = [];
-            foreach ($clientIds as $i => $id) {
-                $project["client_data"][] = ["id" => $id, "name" => $clientNames[$i]];
-            }
-
-            $project["contractor_data"] = [];
-            foreach ($contractorIds as $i => $id) {
-                $project["contractor_data"][] = ["id" => $id, "name" => $contractorNames[$i]];
-            }
-
-            // ユーザーの立場判定
-            $project["position"] = $this->determineUserPosition($userId, $clientIds, $contractorIds);
-
-            // 使わないフィールドの削除
-            unset(
-                $project["client_ids_str"],
-                $project["client_names_str"],
-                $project["contractor_ids_str"],
-                $project["contractor_names_str"]
-            );
-
-            // grouped_dateでまとめる
-            $groupedDate = $project["grouped_date"];
-            unset($project["grouped_date"]);
-
-            $groupedProjects[$groupedDate][] = $project;
+        if($is_closed){
+            echo '<strike style="font-size: 1.3rem;">' . $scheduleHTML . '</strike>';
+            echo '<span style="font-size: 1.3rem; margin-left:-0.2rem;">&emsp;<wbr><nobr>受付を締め切りました</nobr></span><br>';
+        } else {
+            echo '<input type="radio" name="preferred_day" id="' . htmlspecialchars($id, ENT_QUOTES, 'UTF-8') . '" value="' . $scheduleValue . '">';
+            echo '<label for="' . htmlspecialchars($id, ENT_QUOTES, 'UTF-8') . '" class="radio_box">' . $scheduleHTML . '</label><br>';
         }
-
-        // 最終的な返却形式に整形
-        $result = [];
-        foreach ($groupedProjects as $date => $projectList) {
-            $result[] = [
-                "grouped_date" => $date,
-                "project_list" => $projectList
-            ];
-        }
-
-        return $result;
-    } catch (PDOException $e) {
-        return [
-            "status" => "error",
-            "message" => "fail to fetch the projects. " . $e->getMessage()
-        ];
     }
+
+    echo '<input type="radio" name="preferred_day" id="another_day" value="another_day">';
+    echo '<label for="another_day" class="radio_box">別日開催希望<wbr><nobr>（開催日決まり次第、ご連絡差し上げます）</nobr></label>';
 }
