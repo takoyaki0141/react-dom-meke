@@ -1,34 +1,236 @@
-function renderPreferredDays($schedules){
-    foreach($schedules as $index => $schedule){
-        $id = "preferred_day" . ($index + 1);
-        $is_closed = isClosed($schedule);
+main.js は type="module" の <script> タグで読み込ん
 
-        $replaced = replaceToHTML($schedule);
-        $scheduleValue = htmlspecialchars($replaced['value'], ENT_QUOTES, 'UTF-8');
-        $scheduleHTML = htmlspecialchars($replaced['html'], ENT_QUOTES, 'UTF-8');
 
-        if($is_closed){
-            echo '<strike style="font-size: 1.3rem;">' . $scheduleHTML . '</strike>';
-            echo '<span style="font-size: 1.3rem; margin-left:-0.2rem;">&emsp;<wbr><nobr>受付を締め切りました</nobr></span><br>';
-        } else {
-            echo '<input type="radio" name="preferred_day" id="' . htmlspecialchars($id, ENT_QUOTES, 'UTF-8') . '" value="' . $scheduleValue . '">';
-            echo '<label for="' . htmlspecialchars($id, ENT_QUOTES, 'UTF-8') . '" class="radio_box">' . $scheduleHTML . '</label><br>';
-        }
-    }
+/ ===============================
+// UI構築・更新を扱うモジュール
+// ===============================
 
-    echo '<input type="radio" name="preferred_day" id="another_day" value="another_day">';
-    echo '<label for="another_day" class="radio_box">別日開催希望<wbr><nobr>（開催日決まり次第、ご連絡差し上げます）</nobr></label>';
+export function renderMemberInfo(data, userId) {
+  const userNameAndId = document.getElementById("user-name-and-id");
+  const userDepartmentArea = document.getElementById("user-department");
+
+  const userName = data[0].user_name;
+  const department = data[0].department;
+
+  userNameAndId.textContent = `${userName} (${userId})`;
+  userDepartmentArea.textContent = department;
+}
+
+export function renderCourseName(courseId) {
+  const courseNameArea = document.getElementById("course-name");
+  const courseName = getCourseName(courseId);
+
+  courseNameArea.textContent = courseName;
+
+  if (courseId === 0) {
+    const a = document.createElement("a");
+    a.href = "../submit-requirements";
+    a.textContent = "こちらで選択してください";
+    a.className = "fs_8 ml_3";
+    courseNameArea.appendChild(a);
+  }
+}
+
+export function renderSum90X(totalWill) {
+  const sum90X = document.getElementById("sum-90X");
+  const formatted = Number(Math.floor(totalWill)).toLocaleString();
+  sum90X.textContent = `${formatted} will`;
+}
+
+export function setCommentHeightAuto() {
+  const comment = document.getElementById("comment-study-purchasing");
+  if (comment) comment.style.height = "auto";
+}
+
+export function getCourseName(courseId) {
+  switch (courseId) {
+    case 1: return "営業";
+    case 2: return "装置系技術者";
+    case 3: return "砥石系技術者";
+    case 4: return "CE";
+    default: return "未設定";
+  }
 }
 
 
 
-if (!empty($_POST['preferred_day'])) {
-    $preferred_day = $_POST['preferred_day'];
 
-    // HTMLエスケープ（念のため）
-    $preferred_day = htmlspecialchars($preferred_day, ENT_QUOTES, 'UTF-8');
+main
 
-    if ($preferred_day == "another_day") {
-        $preferred_day = "別日開催希望";
-    }
+import {
+  fetchMemberData,
+  fetchCourseId,
+  fetch90XSum,
+  fetch90XData,
+  fetchPimRank,
+  fetchTestPassStatus,
+  fetchOneMinQuiz,
+  fetchPimRecord,
+  fetchPurchasingData,
+  postFirstLoginUpdate
+} from './api.js';
+
+import {
+  renderMemberInfo,
+  renderCourseName,
+  renderSum90X,
+  setCommentHeightAuto
+} from './ui.js';
+
+// ===============================
+// Utility
+// ===============================
+function showLoading() {
+  document.getElementById("loading-screen").style.display = "flex";
 }
+function hideLoading() {
+  document.getElementById("loading-screen").style.display = "none";
+}
+function getUserIdFromURL() {
+  return new URL(window.location.href).searchParams.get("user_id");
+}
+function toggleView(showMain) {
+  document.getElementById("search-member-area").style.display = showMain ? "none" : "";
+  document.getElementById("main-content").style.display = showMain ? "" : "none";
+}
+function navigateWithUserId(userId) {
+  const newUrl = new URL(window.location.href);
+  newUrl.searchParams.set("user_id", userId);
+  location.href = newUrl;
+}
+
+// ===============================
+// Entry
+// ===============================
+document.addEventListener("DOMContentLoaded", async () => {
+  showLoading();
+  try {
+    M.ScrollSpy.init(document.querySelectorAll(".scrollspy"), { throttle: 15, scrollOffset: 200 });
+    M.Materialbox.init(document.querySelectorAll(".materialboxed"));
+    setupSearchInputListener();
+
+    const userId = getUserIdFromURL();
+    if (!userId) {
+      toggleView(false);
+      return;
+    }
+
+    toggleView(true);
+    await initializePage(userId);
+  } catch (err) {
+    console.error("åæåã¨ã©ã¼:", err);
+  } finally {
+    hideLoading();
+  }
+});
+
+// ===============================
+// Setup
+// ===============================
+function setupSearchInputListener() {
+  const input = document.getElementById("search-member-input");
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      navigateWithUserId(e.target.value);
+    }
+  });
+}
+
+// ===============================
+// Initialization
+// ===============================
+async function initializePage(userId) {
+  try {
+    const [memberInfo, courseId, totalWill] = await Promise.all([
+      fetchMemberData(userId),
+      fetchCourseId(userId),
+      fetch90XSum(userId)
+    ]);
+
+    renderMemberInfo(memberInfo, userId);
+    renderCourseName(courseId);
+    renderSum90X(totalWill);
+    setCommentHeightAuto();
+
+    // ä»ã®å¦çãå¿è¦ã«å¿ãã¦ããã«è¿½å ï¼ä¾ï¼fetch90XData, fetchPimRankç­ï¼
+
+  } catch (err) {
+    console.error("ãã¼ã¿åå¾ã»è¡¨ç¤ºã¨ã©ã¼:", err);
+  }
+}
+
+
+api.js
+
+/ ===============================
+// API通信を扱うモジュール
+// ===============================
+
+export async function fetchMemberData(userId) {
+  const res = await fetch(`../api/api.php?action=fetchSingleMember&user_id=${userId}`);
+  return await res.json();
+}
+
+export async function fetchCourseId(userId) {
+  const res = await fetch(`../api/api.php?action=fetchCourseId&user_id=${userId}`);
+  const json = await res.json();
+  return json.select_course_id;
+}
+
+export async function fetch90XSum(userId) {
+  const res = await fetch(`../api/api.php?action=calc90XData&user_id=${userId}`);
+  const json = await res.json();
+  return json[0].total_will;
+}
+
+export async function fetch90XData(userId) {
+  const res = await fetch(`../api/api.php?action=fetch90XData&user_id=${userId}`);
+  return await res.json();
+}
+
+export async function fetchPimRank(userId) {
+  const res = await fetch(`../api/api.php?action=fetchPimRank&user_id=${userId}`);
+  return await res.json();
+}
+
+export async function fetchTestPassStatus(userId) {
+  const res = await fetch(`../api/api.php?action=lookUpTestsPassStatus&user_id=${userId}`);
+  return await res.json();
+}
+
+export async function fetchOneMinQuiz(userId) {
+  const res = await fetch(`../api/api.php?action=fetchOneMinQuiz&user_id=${userId}`);
+  return await res.json();
+}
+
+export async function fetchIsAdmin() {
+  const res = await fetch(`../api/api.php?action=isAdmin`);
+  return await res.json();
+}
+
+export async function fetchPimRecord(userId) {
+  const res = await fetch(`../api/api.php?action=fetchPimRecord&user_id=${userId}`);
+  return await res.json();
+}
+
+export async function fetchPurchasingData(userId) {
+  const res = await fetch(`../api/api.php?action=fetchPurchasingData&user_id=${userId}`);
+  return await res.json();
+}
+
+export async function fetchUploadedImages(userId, category) {
+  const res = await fetch(`../api/api.php?action=fetchImg&category=${category}&user_id=${userId}`);
+  return await res.json();
+}
+
+export async function postFirstLoginUpdate(data) {
+  const res = await fetch("../api/api.php?action=firstLoginUpdate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return await res.json();
+}
+
+script type="module" src="./js/main.js"></script>
