@@ -1,0 +1,253 @@
+document.addEventListener('DOMContentLoaded', function () {
+
+    const elems = document.querySelectorAll('.scrollspy');
+    const tbl = document.getElementById("members-table");
+    const graduateTbl = document.getElementById("graduate-members-table");
+    const resetButton = document.getElementById("reset-button");
+    const inputId = document.getElementById("input-id");
+    const searchTbl = document.getElementById("search-table");
+    const searchTblParent = document.getElementById("search-table-parent");
+    const noHitEmp = document.getElementById("no-hit-emp");
+
+    let memberData = []; // 全データを保持
+    let currentSortKey = null;
+    let currentSortOrder = 'asc';
+
+    M.ScrollSpy.init(elems, {
+        throttle: 15,
+        scrollOffset: 200,
+    });
+
+    inputId.addEventListener("keyup", (e) => {
+        if (e.key == "Enter") {
+            searchTblParent.style.display = "";
+            initializeTable(searchTbl);
+            fetchSingleMember(e.target.value);
+            if (inputId.value == 0) {
+                inputId.value = "";
+                noHitEmp.style.display = "none";
+            }
+        }
+    });
+
+    resetButton.addEventListener("click", () => {
+        resetButton.disabled = true;
+        inputId.value = "";
+        initializeTable(searchTbl);
+        searchTblParent.style.display = "none";
+        noHitEmp.style.display = "none";
+        resetButton.disabled = false;
+    });
+
+    const firstLoginUpdate = (userId, userName, userDepartment) => {
+        const sessionData = {
+            user_id: userId,
+            user_name: userName,
+            user_department: userDepartment
+        };
+
+        fetch("../api/api.php?action=firstLoginUpdate", {
+            method: 'POST',
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(sessionData)
+        })
+            .then(res => res.json())
+            .then(res => {
+                if (!res) return;
+                console.log("初回ログイン処理成功");
+                window.location.reload();
+            })
+            .catch(console.log);
+    };
+
+    const fetchMemberList = async () => {
+        const res = await fetch("../api/api.php?action=fetchMemberListWithStatus");
+        const data = await res.json();
+        memberData = data;
+        populateFilterOptions();
+        renderTable();
+    };
+
+    const fetchSingleMember = (userId) => {
+        if (userId === "" || userId == 0) {
+            searchTblParent.style.display = "none";
+            return;
+        }
+
+        fetch("../api/api.php?action=fetchSingleMember&user_id=" + userId)
+            .then(res => res.json())
+            .then(data => {
+                if (data.length === 0) {
+                    searchTblParent.style.display = "none";
+                    noHitEmp.style.display = "";
+                    return;
+                }
+
+                noHitEmp.style.display = "none";
+
+                data.forEach((member) => {
+                    const tr = document.createElement("tr");
+                    addTdElem(tr, createTableContents(member));
+                    tr.className = "tr_pointer";
+
+                    const td = document.createElement("td");
+                    td.className = "pointer";
+                    td.append(member.is_graduate == 1 ? "卒業済み" : "在籍中");
+                    tr.appendChild(td);
+
+                    searchTbl.appendChild(tr);
+                });
+
+                addTrClickEvent();
+            })
+            .catch(console.log);
+    };
+
+    const initializeTable = (tbl) => {
+        tbl.innerHTML = "";
+    };
+
+    const createTableContents = (member) => {
+        return [member.user_id, member.user_name, member.department];
+    };
+
+    const addTdElem = (tr, tableContents) => {
+        tableContents.forEach(content => {
+            const td = document.createElement("td");
+            td.append(content);
+            td.className = "pointer";
+            tr.appendChild(td);
+        });
+    };
+
+    const addTrClickEvent = () => {
+        const clickTr = document.getElementsByClassName("tr_pointer");
+        for (let i = 0; i < clickTr.length; i++) {
+            clickTr[i].addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (!clickTr[i].children[0]) return;
+                const clickedUserId = clickTr[i].children[0].innerText;
+                location.href = "../personal-requirements/?user_id=" + clickedUserId;
+            });
+        }
+    };
+
+    const filterMemberData = () => {
+        const dept = document.getElementById("filter-department").value;
+        const grad = document.getElementById("filter-graduate").value;
+
+        return memberData.filter(member => {
+            const matchDept = dept === "" || member.department === dept;
+            const matchGrad = grad === "" || String(member.is_graduate) === grad;
+            return matchDept && matchGrad;
+        });
+    };
+
+    const sortMemberData = (key) => {
+        if (currentSortKey === key) {
+            currentSortOrder = currentSortOrder === 'asc' ? 'desc' : 'asc';
+        } else {
+            currentSortKey = key;
+            currentSortOrder = 'asc';
+        }
+
+        memberData.sort((a, b) => {
+            let aVal = a[key], bVal = b[key];
+            if (typeof aVal === 'string') aVal = aVal.toLowerCase();
+            if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+
+            if (aVal < bVal) return currentSortOrder === 'asc' ? -1 : 1;
+            if (aVal > bVal) return currentSortOrder === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        renderTable();
+    };
+
+    const renderTable = () => {
+        initializeTable(tbl);
+        initializeTable(graduateTbl);
+        const filtered = filterMemberData();
+
+        filtered.forEach(member => {
+            const tr = document.createElement("tr");
+            tr.className = "tr_pointer";
+            addTdElem(tr, createTableContents(member));
+
+            const td = document.createElement("td");
+            td.append(member.course_name);
+            td.className = "pointer";
+            tr.appendChild(td);
+
+            const td2 = document.createElement("td");
+            td2.append(member.passed_status_string);
+            td2.className = "pointer";
+            tr.appendChild(td2);
+
+            const td3 = document.createElement("td");
+            td3.append(member.pim_rank);
+            td3.className = "pointer";
+            tr.appendChild(td3);
+
+            (member.is_graduate ? graduateTbl : tbl).appendChild(tr);
+        });
+
+        addTrClickEvent();
+    };
+
+    const populateFilterOptions = () => {
+        const deptSelect = document.getElementById("filter-department");
+        const deptSet = new Set(memberData.map(m => m.department));
+
+        deptSet.forEach(dept => {
+            const opt = document.createElement("option");
+            opt.value = dept;
+            opt.textContent = dept;
+            deptSelect.appendChild(opt);
+        });
+    };
+
+    // フィルターイベント設定
+    document.getElementById("filter-department").addEventListener("change", renderTable);
+    document.getElementById("filter-graduate").addEventListener("change", renderTable);
+
+    // ソートイベント設定
+    document.querySelectorAll("th.sortable").forEach(th => {
+        th.addEventListener("click", () => sortMemberData(th.dataset.key));
+    });
+
+    // 起動時処理
+    firstLoginUpdate(userId, userName, userDepartment);
+    fetchMemberList();
+});
+
+window.addEventListener("beforeunload", function () {
+    window.scrollTo(0, 0);
+});
+
+
+
+
+
+ふぃるたー
+
+<label for="filter-department">部署名:</label>
+<select id="filter-department">
+  <option value="">全て</option>
+</select>
+
+<label for="filter-graduate">卒業資格:</label>
+<select id="filter-graduate">
+  <option value="">全て</option>
+  <option value="false">在籍中</option>
+  <option value="true">卒業済み</option>
+</select>
+
+
+せれくと
+<th class="sortable" data-key="user_id">社員番号</th>
+<th class="sortable" data-key="user_name">社員名</th>
+<th class="sortable" data-key="department">部署名</th>
+<th class="sortable" data-key="course_name">卒業資格</th>
+<th class="sortable" data-key="passed_status_string">要件達成状況</th>
+<th class="sortable" data-key="pim_rank">PIM段位</th>
