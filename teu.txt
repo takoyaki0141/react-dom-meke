@@ -1,0 +1,239 @@
+function showToast(message) {
+    const toast = document.createElement("div");
+    toast.textContent = message;
+    toast.className = "custom-toast";
+    document.body.appendChild(toast);
+
+    toast.addEventListener("animationend", () => {
+        document.body.removeChild(toast);
+    });
+}
+
+@keyframes toastSlideFade {
+    0% {
+        opacity: 0;
+        transform: translateY(20px); /* 少し下から */
+    }
+    10% {
+        opacity: 1;
+        transform: translateY(0);    /* 定位置にスライド */
+    }
+    80% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-10px); /* 最後に少し上へ */
+    }
+}
+
+.custom-toast {
+    position: fixed;
+    top: 32px;
+    right: 32px;
+    background-color: yellowgreen;
+    color: #fff;
+    border-radius: 4px;
+    padding: 16px;
+    font-size: 1.5rem;
+    z-index: 9999;
+    animation: toastSlideFade 2.5s ease-in-out forwards;
+}
+
+
+
+--
+
+// common.js
+
+export async function fetchExampleQ(urlId, qNum) {
+    const url = `../../backend/function.php?func=fetchExQ&id=${urlId}&q_num=${qNum}`;
+    try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`res status: ${res.status}`);
+        return await res.json();
+    } catch (error) {
+        console.error(error.message);
+    }
+}
+
+export async function fetchQ2(urlId, qNum) {
+    const url = `../../backend/function.php?func=fetchQ&id=${urlId}&q_num=${qNum}`;
+    try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`res status: ${res.status}`);
+        return await res.json();
+    } catch (error) {
+        alert("URLが異なります。これもいい見た目にする");
+        console.error(error.message);
+    }
+}
+
+export function appendTextIntoArea(exTextArea, exInput, exAnsArea, exExplainArea, exQ, textArea, inputArea, q) {
+    exTextArea.append(exQ.q_content);
+    exInput.append(exQ.q_input);
+    exAnsArea.append(exQ.q_answer);
+    exExplainArea.append(exQ.explanation);
+    textArea.append(q.q_content);
+    inputArea.append(q.q_input);
+}
+
+export async function fetchAlreadyCollect(urlId) {
+    const url = `../../backend/function.php?func=fetchAlreadyCollect&id=${urlId}`;
+    try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`res status: ${res.status}`);
+        return await res.json();
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+export async function changeTabColor(urlId, tabMap) {
+    const alreadyCollect = await fetchAlreadyCollect(urlId);
+
+    for (const [key, elements] of Object.entries(tabMap)) {
+        if (alreadyCollect[key]) {
+            elements.forEach(el => el.style.backgroundColor = '#66ccaa');
+        }
+    }
+}
+
+export function displayJudge(judge, inputAnswer, submitBtn, answerArea, urlId) {
+    const resultArea = createResultElement(judge, answerArea);
+    if (judge != 1) return;
+
+    inputAnswer.readOnly = true;
+    submitBtn.style.display = "none";
+    const sourceForm = createSourceSubmitForm(urlId);
+    answerArea.appendChild(resultArea);
+    answerArea.appendChild(sourceForm);
+}
+
+export function createResultElement(judge, answerArea) {
+    const resultArea = document.createElement('div');
+    resultArea.className = "result-area";
+    const resultText = document.createElement('p');
+    const icon = document.createElement('img');
+    resultArea.appendChild(icon);
+
+    if (judge != 1) {
+        resultText.textContent = "不正解";
+        icon.src = "../../img/takahashi/fuseikai.png";
+        resultArea.appendChild(resultText);
+        answerArea.appendChild(resultArea);
+        return;
+    }
+    icon.src = "../../img/takahashi/seikai.png";
+    resultText.textContent = "正解";
+    resultArea.appendChild(resultText);
+    return resultArea;
+}
+
+export function createSourceSubmitForm(urlId) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = `../../backend/function.php?func=submitSource&id=${urlId}&q_num=1`;
+
+    const label = document.createElement('p');
+    label.textContent = "ソースコードを提出してください。";
+    label.id = "label-input-source";
+
+    const textArea = document.createElement('textarea');
+    textArea.className = "input-source";
+    textArea.name = "source";
+    textArea.id = "input-source";
+
+    const btn = document.createElement('button');
+    btn.className = "copy-btn";
+    btn.textContent = '提出';
+    btn.id = "submit-source-btn";
+
+    form.appendChild(label);
+    form.appendChild(textArea);
+    form.appendChild(btn);
+
+    return form;
+}
+
+export async function postAns(formData) {
+    try {
+        const res = await fetch("../../backend/function.php?func=postAns", {
+            method: "POST",
+            body: formData
+        });
+        if (!res.ok) throw new Error(`HTTP error Status: ${res.status}`);
+        return await res.text();
+    } catch (error) {
+        console.error("postAns API error:", error);
+        alert("送信に失敗しました。");
+    }
+}
+
+export function cleanResultArea(answerArea) {
+    answerArea.innerHTML = '';
+}
+
+export async function fetchUserAnswer(urlId, qNum) {
+    const url = `../../backend/function.php?func=fetchUserAnswer&id=${urlId}&q_num=${qNum}`;
+    try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`res status: ${res.status}`);
+        return await res.json();
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+export async function displayUserAnswer(urlId, qNum, inputAnswer, labelInput, submitBtn, answerArea) {
+    const oldUserAnswer = await fetchUserAnswer(urlId, qNum);
+    if (!oldUserAnswer || !oldUserAnswer['ans' + qNum]) return;
+
+    const userAns = oldUserAnswer['ans' + qNum];
+    const userSource = oldUserAnswer['a' + qNum + '_source'];
+    const isCorrect = oldUserAnswer['is_a' + qNum + '_corrected'];
+
+    displayJudge(isCorrect, inputAnswer, submitBtn, answerArea, urlId);
+
+    submitBtn.textContent = "再提出";
+    inputAnswer.textContent = userAns;
+    labelInput.textContent = "解答済";
+
+    if (isCorrect === false) return;
+
+    if (userSource) {
+        const inputSource = document.getElementById('input-source');
+        inputSource.textContent = userSource;
+
+        const labelInputSource = document.getElementById('label-input-source');
+        labelInputSource.textContent = "提出済みのコードです。再提出可能です。";
+
+        const submitSourceBtn = document.getElementById('submit-source-btn');
+        submitSourceBtn.textContent = "再提出";
+    }
+}
+
+
+あ
+
+import {
+  fetchExampleQ,
+  fetchQ2,
+  appendTextIntoArea,
+  fetchAlreadyCollect,
+  changeTabColor,
+  displayJudge,
+  createSourceSubmitForm,
+  postAns,
+  cleanResultArea,
+  displayUserAnswer
+} from './common.js';
+
+const tabMap = {
+  is_a1_corrected: [topTabQ1, bottomTabQ1],
+  is_a3_corrected: [topTabQ3, bottomTabQ3],
+  is_a4_corrected: [topTabQ4, bottomTabQ4]
+};
+changeTabColor(urlId, tabMap);
+
