@@ -1,0 +1,321 @@
+const createProject = async (data, sessionId) => {
+    const query = `
+        INSERT INTO project (
+            project_id,
+            project_title, 
+            project_content, 
+            start_date, 
+            end_date, 
+            status_id, 
+            ins_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+    const [result] = await db.promise().query(query, [
+        data.project_id, data.project_title, data.project_content, 
+        data.start_date, data.end_date, data.status_id, sessionId
+    ]);
+    return result;
+};
+const registerProjectMember = async (data) => {
+    if (!data.project_members || data.project_members.length === 0) {
+        return { message: "No user_id to register" };
+    }
+
+    const values = data.project_members.map(member => [data.project_id, member.user_id, member.user_name]);
+    const query = `INSERT INTO project_member (project_id, user_id, user_name) VALUES ?`;
+
+    const [result] = await db.promise().query(query, [values]);
+    return result;
+};
+
+
+あた
+// controllers/projectController.js
+
+exports.updateProject = async (req, res) => {
+    try {
+        const data = req.body;
+        const sessionId = req.session?.u_id || 0;
+
+        if (!data.project_id) {
+            return res.status(400).json({ error: "プロジェクトIDが不足しています" });
+        }
+
+        data.finished_at ||= "0000-00-00";
+
+        await Project.updateProject(data, sessionId);
+
+        if (Array.isArray(data.project_members) && data.project_members.length > 0) {
+            await Project.upsertProjectMember(data);
+        }
+
+        return res.status(200).json({ message: "プロジェクトを更新しました" });
+    } catch (error) {
+        console.error("プロジェクト更新エラー:", error);
+        return res.status(500).json({ error: error.message });
+    }
+};
+
+
+// models/projectModel.js
+
+const upsertProjectMember = async (data) => {
+    const { project_id, project_members } = data;
+
+    if (!project_members.length) return { message: "メンバーが存在しません" };
+
+    const currentMembers = await fetchProjectMembers(project_id);
+    const currentUserIds = currentMembers.map(m => m.user_id);
+    const newUserIds = project_members.map(m => m.user_id);
+
+    const idsToDelete = currentUserIds.filter(id => !newUserIds.includes(id));
+    const idsToRestore = newUserIds.filter(id => currentUserIds.includes(id));
+    const newMembers = project_members.filter(m => !currentUserIds.includes(m.user_id));
+
+    await deleteProjectMembers(project_id, idsToDelete);
+    await restoreProjectMembers(project_id, idsToRestore);
+
+    for (const member of newMembers) {
+        await addProjectMember(project_id, member.user_id, member.user_name);
+    }
+
+    return { message: "メンバー更新に成功しました" };
+};
+
+const fetchProjectMembers = async (projectId) => {
+    const query = `SELECT user_id, user_name, is_deleted FROM project_member WHERE project_id = ?`;
+    const [members] = await db.promise().query(query, [projectId]);
+    return members;
+};
+
+const deleteProjectMembers = async (projectId, userIds) => {
+    if (!userIds.length) return;
+
+    const placeholders = userIds.map(() => '?').join(',');
+    const query = `UPDATE project_member SET is_deleted = 1 WHERE project_id = ? AND user_id IN (${placeholders})`;
+    await db.promise().query(query, [projectId, ...userIds]);
+};
+
+const restoreProjectMembers = async (projectId, userIds) => {
+    if (!userIds.length) return;
+
+    const placeholders = userIds.map(() => '?').join(',');
+    const query = `UPDATE project_member SET is_deleted = 0 WHERE project_id = ? AND user_id IN (${placeholders})`;
+    await db.promise().query(query, [projectId, ...userIds]);
+};
+
+const addProjectMember = async (projectId, userId, userName) => {
+    const query = `INSERT INTO project_member (project_id, user_id, user_name, is_deleted) VALUES (?, ?, ?, 0)`;
+    await db.promise().query(query, [projectId, userId, userName]);
+};
+
+module.exports = {
+    createProject,
+    registerProjectMember,
+    upsertProjectMember,
+    fetchAllProjects,
+    fetchProjectById,
+    updateProject
+};
+
+
+
+
+！
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>プロチャレデバッグページ</title>
+  <style>
+    table {
+      border-collapse: collapse;
+      border: 2px solid #8c8c8c;
+      font-family: sans-serif;
+      font-size: 1.1rem;
+      table-layout: fixed;
+      width: 100%;
+      word-wrap: break-word;
+    }
+
+    thead {
+      position: sticky;
+      top: 0;
+      background-color: #9c9c9c;
+    }
+
+    th, td {
+      border: 1px solid #a0a0a0;
+      padding: 8px 10px;
+      text-align: left;
+    }
+
+    tbody > tr:nth-of-type(even) {
+      background-color: #d4d4d4;
+    }
+  </style>
+</head>
+<body style="width:70%; margin:auto;">
+  <h1>programming-challenge Debug Page</h1>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:6%;">問題ID</th>
+        <th style="width:30%;">問題内容</th>
+        <th style="width:10%;">入力</th>
+        <th style="width:40%;">提出欄</th>
+        <th style="width:10%;">確認</th>
+      </tr>
+    </thead>
+    <tbody id="q-table"></tbody>
+  </table>
+
+  <script>
+    async function fetchAllQ() {
+      const url = '../backend/function.php?func=fetchAllQ';
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`res status: ${res.status}`);
+        return await res.json();
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    function createCell(content) {
+      const td = document.createElement('td');
+      td.append(content);
+      return td;
+    }
+
+    function createInputAndButton(onSubmit) {
+      const input = document.createElement('input');
+      input.type = "text";
+      input.style.maxWidth = "70%";
+      input.style.height = "3rem";
+      input.style.fontSize = "1.2rem";
+
+      const button = document.createElement('button');
+      button.textContent = "解答";
+      button.style.maxWidth = "20%";
+      button.style.height = "3rem";
+      button.style.width = "5rem";
+      button.style.fontSize = "0.9rem";
+      button.style.backgroundColor = "red";
+      button.style.color = "white";
+      button.style.marginLeft = "10%";
+
+      const div = document.createElement("div");
+      div.style.display = "flex";
+      div.style.maxWidth = "95%";
+
+      div.append(input, button);
+      button.addEventListener('click', () => onSubmit(input.value));
+
+      return { wrapper: div, input };
+    }
+
+    function addQuestionRow(q, container) {
+      const tr = document.createElement('tr');
+      tr.appendChild(createCell(q.q_id));
+      tr.appendChild(createCell(q.q_content));
+      tr.appendChild(createCell(q.q_input ?? 'なし'));
+
+      const tdAns = document.createElement('td');
+      const resultLabel = document.createElement('label');
+      resultLabel.textContent = "";
+
+      const { wrapper: inputWrapper, input } = createInputAndButton((value) => {
+        const isCorrect = value.trim().toLowerCase() === (q.q_answer?.trim().toLowerCase() || '');
+        resultLabel.textContent = value.trim() === '' ? '空欄' : isCorrect ? '合格' : '不合格';
+        resultLabel.style.color = isCorrect ? 'green' : 'red';
+      });
+
+      tdAns.appendChild(inputWrapper);
+      tr.appendChild(tdAns);
+
+      const tdResult = document.createElement('td');
+      tdResult.appendChild(resultLabel);
+      tr.appendChild(tdResult);
+
+      container.appendChild(tr);
+    }
+
+    document.addEventListener('DOMContentLoaded', async function () {
+      const tableBody = document.getElementById("q-table");
+      const allQ = await fetchAllQ();
+      allQ.forEach(q => addQuestionRow(q, tableBody));
+    });
+  </script>
+</body>
+</html>
+
+
+あ
+
+const axios = require('axios');
+
+async function fetchUserInfo(targetUserId) {
+  const url = 'http://webd1.discojpn.local/webd1/Access.php';
+
+  const params = {
+    action: 'user_info',
+    key: 'KcCJe8a1RBIm',
+    target_user_id: targetUserId,
+    user_id: 14202
+  };
+
+  try {
+    const response = await axios.get(url, { params });
+    const contents = response.data;
+
+    if (contents?.user_info?.result) {
+      return contents.user_info.result;
+    } else {
+      return {
+        status: "error",
+        message: "期待される形式のレスポンスが返ってきませんでした。"
+      };
+    }
+  } catch (error) {
+    return {
+      status: "error",
+      message: "エラーが起きました: " + error.message
+    };
+  }
+}
+
+
+な
+
+newMemberRegisterForm.addEventListener("submit", async function(e) {
+    e.preventDefault();
+
+    const formData = new FormData(this);
+
+    // 社員番号が入力されていなければ中断
+    if (!formData.get("employeeId")) {
+        alert("社員番号が入力されていません");
+        return;
+    }
+
+    try {
+        const res = await fetch("../api/api.php?action=registerNewMidMember", {
+            method: "POST",
+            body: formData
+        });
+
+        if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(`HTTPエラー: ${res.status} - ${errorText}`);
+        }
+
+        alert("新しい中途AP大生を登録しました");
+        window.location.reload();
+    } catch (error) {
+        alert("登録失敗しました");
+        console.error("登録エラー:", error);
+    }
+});
+
