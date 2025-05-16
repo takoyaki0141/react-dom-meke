@@ -1,11 +1,12 @@
-public function fetchDelayedProjects() {
+public function fetchCloseProjects() {
     try {
-        // 1. 契約者 × プロジェクト を取得（依頼者は後で別取得）
+        // contractor × project 基本情報を取得
         $sql = "
             SELECT
                 p.project_id,
                 p.project_name,
                 p.due_date,
+                p.created_at,
                 c.contractor_id
             FROM
                 project p
@@ -16,25 +17,18 @@ public function fetchDelayedProjects() {
                 p.due_date ASC
         ";
         $stmt = $this->dbh->prepare($sql);
-        $stmt->execute([':progress_id' => 6]);
+        $stmt->execute([':progress_id' => 2]);
         $projectRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // 2. 全プロジェクトの client 一括取得
-        $sqlClients = "
-            SELECT
-                project_id,
-                client_id,
-                client_name
-            FROM
-                client
-            WHERE
-                is_deleted = 0
-        ";
-        $stmtClients = $this->dbh->prepare($sqlClients);
+        // project_id → clients[] を取得して辞書化
+        $stmtClients = $this->dbh->prepare("
+            SELECT project_id, client_id, client_name
+            FROM client
+            WHERE is_deleted = 0
+        ");
         $stmtClients->execute();
         $clientRows = $stmtClients->fetchAll(PDO::FETCH_ASSOC);
 
-        // 3. project_id → client[] の辞書を作成
         $clientsByProject = [];
         foreach ($clientRows as $row) {
             $clientsByProject[$row['project_id']][] = [
@@ -43,28 +37,41 @@ public function fetchDelayedProjects() {
             ];
         }
 
-        // 4. 結果構築（contractor_id → project_id → 情報）
         require_once('statisticClass.php');
         $statControl = new Statistic($this->db);
+        $today = date('Y-m-d');
         $result = [];
 
-        $today = date('Y-m-d');
-
         foreach ($projectRows as $p) {
-            $contractorId = $p['contractor_id'];
-            $projectId = $p['project_id'];
+            $contractorId = $p["contractor_id"];
+            $projectId = $p["project_id"];
 
-            // 重複回避：すでに同じcontractor-projectが入っていればスキップ
             if (isset($result[$contractorId][$projectId])) continue;
 
-            $delayDays = $statControl->calcLeftDays($p["due_date"], $today) * -1;
+            $remainingDays = $statControl->calcLeftDays($p["due_date"], $today);
+            $plannedMarginDays = $statControl->calcLeftDays($p["due_date"], $p["created_at"]);
+            $remainingRate = ($plannedMarginDays != 0) ? $remainingDays / $plannedMarginDays : 0;
+
+            $noticeMode = "";
+            if ($remainingDays == 0) {
+                $noticeMode = "today";
+            } elseif ($remainingDays == 1) {
+                $noticeMode = "tomorrow";
+            } elseif ($remainingRate < 0.2 && $remainingDays >= 0) {
+                $noticeMode = "close";
+            } else {
+                continue;
+            }
 
             $result[$contractorId][$projectId] = [
-                "project_id"   => $projectId,
+                "project_id" => $projectId,
                 "project_name" => $p["project_name"],
-                "due_date"     => $p["due_date"],
-                "delay_days"   => $delayDays,
-                "clients"      => $clientsByProject[$projectId] ?? []
+                "due_date" => $p["due_date"],
+                "remaining_days" => $remainingDays,
+                "planned_margin_days" => $plannedMarginDays,
+                "remaining_days_rate" => $remainingRate,
+                "notice_mode" => $noticeMode,
+                "clients" => $clientsByProject[$projectId] ?? []
             ];
         }
 
@@ -78,10 +85,6 @@ public function fetchDelayedProjects() {
 }
 
 
-
-
-
-あ
 
 <?php
 
@@ -106,34 +109,46 @@ $botId = $dmBotConfig['bot_id'];
 $apiKey = $dmBotConfig['api_key'];
 
 try {
-    $allP = $projectControl->fetchDelayedProjects();
+    $allP = $projectControl->fetchCloseProjects();
 
     foreach ($allP as $contractorId => $projects) {
-        // if ($contractorId != 14202 && $contractorId != 14226) continue;
-        if ($contractorId != 14202) continue;
+        // if ($contractorId != 14202) continue;
 
-        $message = "ChaChatHTML;
-            <b>納期遅れのプロジェクト一覧です</b><br><br>";
+        $grouped = [
+            "today" => [],
+            "tomorrow" => [],
+            "close" => []
+        ];
 
         foreach ($projects as $p) {
-            $projectId   = $p["project_id"];
-            $projectName = $p["project_name"];
-            $dueDate     = $p["due_date"];
-            $delayDays   = $p["delay_days"];
-
-            $clientText = implode("、", array_map(fn($c) => $c["client_name"] . "(" . $c["client_id"] . ")", $p["clients"]));
-
-            $link = 'https://mng.discojpn.com/backend/milestone/dmessage/redirect/Redirect.html?page=project&projectId=' . $projectId;
-            $hrefInBot = "<b><a href=# name=$link target='_blank' onclick='OnButtonClick(this.textContent,this.name)'> $projectName </a></b>";
-
-            $message .= "--------------------------<br>
-                案件名：$hrefInBot<br>
-                納期：$dueDate<br>
-                遅れ日数：$delayDays 日<br>
-                依頼者：$clientText<br><br>";
+            $grouped[$p["notice_mode"]][] = $p;
         }
 
-        // ルーム作成 & 送信
+        $message = "ChaChatHTML;";
+
+        foreach (["today", "tomorrow", "close"] as $mode) {
+            if (count($grouped[$mode]) === 0) continue;
+
+            $header = [
+                "today" => "<b>本日が納期のプロジェクト一覧です</b><br><br>",
+                "tomorrow" => "<b>翌営業日が納期のプロジェクト一覧です</b><br><br>",
+                "close" => "<b>納期が近いプロジェクト一覧です</b><br><br>"
+            ][$mode];
+
+            $message .= "--------------------------<br>$header";
+
+            foreach ($grouped[$mode] as $p) {
+                $clientText = implode("、", array_map(fn($c) => $c["client_name"] . "(" . $c["client_id"] . ")", $p["clients"]));
+                $href = "<b><a href=# name='https://mng.discojpn.com/backend/milestone/dmessage/redirect/Redirect.html?page=project&projectId={$p['project_id']}' target='_blank' onclick='OnButtonClick(this.textContent,this.name)'>{$p['project_name']}</a></b>";
+
+                $message .= "案件名：$href<br>
+                    納期：{$p['due_date']}<br>
+                    残り日数：{$p['remaining_days']} 日<br>
+                    依頼者：$clientText<br><br>";
+            }
+        }
+
+        // Botルーム送信
         $output = $projectControl->createDmessageBOTRoom($contractorId);
         $roomId = $output->room_id;
 
@@ -150,7 +165,7 @@ try {
     }
 
 } catch (PDOException $e) {
-    echo "error receiving dmessage" . $e->getMessage();
+    echo "error receiving dmessage: " . $e->getMessage();
 }
 
 function botCurlExec($param) {
