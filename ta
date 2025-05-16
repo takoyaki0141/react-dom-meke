@@ -1,0 +1,166 @@
+public function fetchDelayedProjects() {
+    try {
+        // 1. 契約者 × プロジェクト を取得（依頼者は後で別取得）
+        $sql = "
+            SELECT
+                p.project_id,
+                p.project_name,
+                p.due_date,
+                c.contractor_id
+            FROM
+                project p
+            INNER JOIN contractor c ON p.project_id = c.project_id AND c.is_deleted = 0
+            WHERE
+                p.progress_id = :progress_id
+            ORDER BY
+                p.due_date ASC
+        ";
+        $stmt = $this->dbh->prepare($sql);
+        $stmt->execute([':progress_id' => 6]);
+        $projectRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // 2. 全プロジェクトの client 一括取得
+        $sqlClients = "
+            SELECT
+                project_id,
+                client_id,
+                client_name
+            FROM
+                client
+            WHERE
+                is_deleted = 0
+        ";
+        $stmtClients = $this->dbh->prepare($sqlClients);
+        $stmtClients->execute();
+        $clientRows = $stmtClients->fetchAll(PDO::FETCH_ASSOC);
+
+        // 3. project_id → client[] の辞書を作成
+        $clientsByProject = [];
+        foreach ($clientRows as $row) {
+            $clientsByProject[$row['project_id']][] = [
+                'client_id' => $row['client_id'],
+                'client_name' => $row['client_name']
+            ];
+        }
+
+        // 4. 結果構築（contractor_id → project_id → 情報）
+        require_once('statisticClass.php');
+        $statControl = new Statistic($this->db);
+        $result = [];
+
+        $today = date('Y-m-d');
+
+        foreach ($projectRows as $p) {
+            $contractorId = $p['contractor_id'];
+            $projectId = $p['project_id'];
+
+            // 重複回避：すでに同じcontractor-projectが入っていればスキップ
+            if (isset($result[$contractorId][$projectId])) continue;
+
+            $delayDays = $statControl->calcLeftDays($p["due_date"], $today) * -1;
+
+            $result[$contractorId][$projectId] = [
+                "project_id"   => $projectId,
+                "project_name" => $p["project_name"],
+                "due_date"     => $p["due_date"],
+                "delay_days"   => $delayDays,
+                "clients"      => $clientsByProject[$projectId] ?? []
+            ];
+        }
+
+        return $result;
+
+    } catch (PDOException $e) {
+        return ["status" => "error", "message" => "DB Error: " . $e->getMessage()];
+    } catch (Exception $e) {
+        return ["status" => "error", "message" => "General Error: " . $e->getMessage()];
+    }
+}
+
+
+
+
+
+あ
+
+<?php
+
+header('Content-type: application/json; charset=UTF-8');
+
+require_once '../classes/projectClass.php';
+require_once '../classes/database.php';
+
+$config = require_once '../config/config.php';
+
+$db = new DBconnect(
+    $config['dbMain']['host'],
+    $config['dbMain']['dbname'],
+    $config['dbMain']['username'],
+    $config['dbMain']['password']
+);
+
+$projectControl = new project($db);
+
+$dmBotConfig = require_once '../config/dMConfig.php';
+$botId = $dmBotConfig['bot_id'];
+$apiKey = $dmBotConfig['api_key'];
+
+try {
+    $allP = $projectControl->fetchDelayedProjects();
+
+    foreach ($allP as $contractorId => $projects) {
+        // if ($contractorId != 14202 && $contractorId != 14226) continue;
+        if ($contractorId != 14202) continue;
+
+        $message = "ChaChatHTML;
+            <b>納期遅れのプロジェクト一覧です</b><br><br>";
+
+        foreach ($projects as $p) {
+            $projectId   = $p["project_id"];
+            $projectName = $p["project_name"];
+            $dueDate     = $p["due_date"];
+            $delayDays   = $p["delay_days"];
+
+            $clientText = implode("、", array_map(fn($c) => $c["client_name"] . "(" . $c["client_id"] . ")", $p["clients"]));
+
+            $link = 'https://mng.discojpn.com/backend/milestone/dmessage/redirect/Redirect.html?page=project&projectId=' . $projectId;
+            $hrefInBot = "<b><a href=# name=$link target='_blank' onclick='OnButtonClick(this.textContent,this.name)'> $projectName </a></b>";
+
+            $message .= "--------------------------<br>
+                案件名：$hrefInBot<br>
+                納期：$dueDate<br>
+                遅れ日数：$delayDays 日<br>
+                依頼者：$clientText<br><br>";
+        }
+
+        // ルーム作成 & 送信
+        $output = $projectControl->createDmessageBOTRoom($contractorId);
+        $roomId = $output->room_id;
+
+        $param = [
+            "message" => $message,
+            "bot_user_id" => $botId,
+            "room_id" => $roomId,
+            "api_key" => $apiKey,
+            "cast_type" => "uni",
+            "owner_user_id" => "14202"
+        ];
+
+        botCurlExec($param);
+    }
+
+} catch (PDOException $e) {
+    echo "error receiving dmessage" . $e->getMessage();
+}
+
+function botCurlExec($param) {
+    $curl = curl_init("https://dmessage.discojpn.com/util/bot_if.php");
+    curl_setopt($curl, CURLOPT_POST, true);
+    curl_setopt($curl, CURLOPT_POSTFIELDS, http_build_query($param));
+    curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, false);
+    curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($curl, CURLOPT_FOLLOWLOCATION, true);
+    $output = curl_exec($curl);
+    curl_close($curl);
+}
