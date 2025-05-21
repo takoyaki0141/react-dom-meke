@@ -1,0 +1,162 @@
+const fetch = require('node-fetch');
+
+const {
+    LOGIN_AUTH_CLIENT_ID,
+    LOGIN_SECRET_KEY,
+    LOCAL_LOGIN_AUTH_CLIENT_ID,
+    LOCAL_LOGIN_SECRET_KEY,
+    LOGIN_URL,
+    LOCAL_LOGIN_URL,
+    MAIN_REDIRECT_URL,
+    LOCAL_REDIRECT_URL,
+    USER_INFO_URL
+} = process.env;
+
+if (!LOGIN_AUTH_CLIENT_ID || !LOGIN_SECRET_KEY) {
+    console.error("本番用クレデンシャルが未設定です。");
+    process.exit(1);
+}
+
+if (!LOCAL_LOGIN_AUTH_CLIENT_ID || !LOCAL_LOGIN_SECRET_KEY) {
+    console.error("ローカル用クレデンシャルが未設定です。");
+    process.exit(1);
+}
+
+// セッションチェック関数
+const sessionCheck = (req) => {
+    return req.session.u_name !== undefined && req.session.u_name !== "";
+};
+
+// ログイン状態確認（Web用/ページリダイレクト）
+const loginCheckWeb = (req, res, next) => {
+    if (sessionCheck(req)) {
+        next();
+    } else {
+        req.session.url = req.originalUrl;
+        const redirectUrl = req.originalUrl.startsWith('/api/local') ? LOCAL_LOGIN_URL : LOGIN_URL;
+        res.redirect(redirectUrl);
+    }
+};
+
+// ログイン状態確認（API用/JSON返却）
+const loginCheckApi = (req, res, next) => {
+    if (sessionCheck(req)) {
+        next();
+    } else {
+        req.session.url = req.originalUrl;
+        const redirectUrl = req.originalUrl.startsWith('/api/local') ? LOCAL_LOGIN_URL : LOGIN_URL;
+        res.status(401).json({ loggedIn: false, redirectUrl });
+    }
+};
+
+// ログイン処理
+const handleLoginCheck = async (req, res) => {
+    const accessToken = req.query.accessToken;
+    if (!accessToken) return res.status(400).json({ error: "accessToken is required" });
+
+    const isLocal = req.originalUrl.includes('local');
+    const clientId = isLocal ? LOCAL_LOGIN_AUTH_CLIENT_ID : LOGIN_AUTH_CLIENT_ID;
+    const secret = isLocal ? LOCAL_LOGIN_SECRET_KEY : LOGIN_SECRET_KEY;
+
+    try {
+        const userInfo = await getAccount({ clientId, secret, accessToken });
+
+        if (!userInfo || !userInfo.userId || !userInfo.user?.name) {
+            return res.status(401).json({ error: "Invalid user information" });
+        }
+
+        req.session.u_id = userInfo.userId;
+        req.session.u_name = userInfo.user.name;
+
+        const redirectUrl = isLocal ? LOCAL_REDIRECT_URL : MAIN_REDIRECT_URL;
+        res.redirect(redirectUrl);
+    } catch (err) {
+        console.error("ログイン処理エラー:", err);
+        res.status(500).json({ error: "Internal server error" });
+    }
+};
+
+// アカウント取得
+const getAccount = async ({ clientId, secret, accessToken }) => {
+    const postBody = {
+        clientId,
+        secret,
+        accessToken
+    };
+
+    const response = await fetch(USER_INFO_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(postBody)
+    });
+
+    if (!response.ok) {
+        console.error(`ユーザー情報取得失敗: ${response.status}`);
+        return null;
+    }
+
+    return await response.json();
+};
+
+module.exports = {
+    loginCheckWeb,
+    loginCheckApi,
+    handleLoginCheck
+};
+
+
+
+
+
+
+あ
+const express = require('express');
+const router = express.Router();
+
+const { loginCheckWeb, loginCheckApi, handleLoginCheck } = require('./external_api/loginCheck');
+
+// ログイン後に表示されるメイン画面（ブラウザアクセス用）
+router.get('/mainTest', loginCheckWeb, (req, res) => {
+    res.render('mainTest', {
+        u_id: req.session.u_id,
+        u_name: req.session.u_name
+    });
+});
+
+// ログインチェック（API用）
+router.get('/api/logincheck', loginCheckApi, (req, res) => {
+    res.json({ loggedIn: true, userId: req.session.u_id, userName: req.session.u_name });
+});
+router.get('/api/local/logincheck', loginCheckApi, (req, res) => {
+    res.json({ loggedIn: true, userId: req.session.u_id, userName: req.session.u_name });
+});
+
+// ログイン処理（トークン付きURLでアクセスされた場合）
+router.get('/api/login', handleLoginCheck);
+router.get('/api/local/login', handleLoginCheck);
+
+// APIセッション確認用
+router.get('/api/getSession', loginCheckApi, (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({
+        user_id: req.session.u_id,
+        user_name: req.session.u_name
+    });
+});
+
+
+い
+LOGIN_AUTH_CLIENT_ID=xxxxxxx
+LOGIN_SECRET_KEY=xxxxxxxx
+LOCAL_LOGIN_AUTH_CLIENT_ID=xxxxxxx
+LOCAL_LOGIN_SECRET_KEY=xxxxxxxx
+
+LOGIN_URL=https://Xauthenticator.XXXXXjpn.com/api/user/authcheck?clientId=xxxxxxx
+LOCAL_LOGIN_URL=https://Xauthenticator.XXXXXjpn.com/api/user/authcheck?clientId=xxxxxxx
+USER_INFO_URL=https://Xauthenticator.XXXXXjpn.com/api/user/userInfo
+
+MAIN_REDIRECT_URL=https://mng.XXXXXjpn.com/taskchart
+LOCAL_REDIRECT_URL=http://localhost:5173/
+
+
+
