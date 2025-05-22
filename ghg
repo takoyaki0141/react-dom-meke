@@ -1,0 +1,59 @@
+// SVG namespace
+const svgNS = "http://www.w3.org/2000/svg";
+
+// SVGルート要素
+const svg = document.createElementNS(svgNS, "svg");
+svg.setAttribute("width", "102");
+svg.setAttribute("height", "38");
+svg.setAttribute("viewBox", "0 0 102 38");
+
+// <g> グループ
+const group = document.createElementNS(svgNS, "g");
+group.setAttribute("transform", "translate(-593 -2696)");
+
+// <text> 正解
+const text = document.createElementNS(svgNS, "text");
+text.setAttribute("transform", "translate(671 2723)");
+text.setAttribute("fill", "#fff");
+text.setAttribute("font-size", "24");
+text.setAttribute("font-family", "YuGothicUI-Bold, Yu Gothic UI");
+text.setAttribute("font-weight", "700");
+
+const tspan = document.createElementNS(svgNS, "tspan");
+tspan.setAttribute("x", "-24");
+tspan.setAttribute("y", "0");
+tspan.textContent = "正解";
+
+text.appendChild(tspan);
+
+// <circle> 背景円
+const circle = document.createElementNS(svgNS, "circle");
+circle.setAttribute("cx", "19");
+circle.setAttribute("cy", "19");
+circle.setAttribute("r", "19");
+circle.setAttribute("transform", "translate(593 2696)");
+circle.setAttribute("fill", "#00ad93");
+
+// <rect> チェックマークの横線（短）
+const rect1 = document.createElementNS(svgNS, "rect");
+rect1.setAttribute("width", "12");
+rect1.setAttribute("height", "4");
+rect1.setAttribute("transform", "translate(605.172 2711.464) rotate(45)");
+rect1.setAttribute("fill", "#fff");
+
+// <rect> チェックマークの斜め線（長）
+const rect2 = document.createElementNS(svgNS, "rect");
+rect2.setAttribute("width", "18");
+rect2.setAttribute("height", "4");
+rect2.setAttribute("transform", "translate(623.657 2710.05) rotate(135)");
+rect2.setAttribute("fill", "#fff");
+
+// 組み立て
+group.appendChild(text);
+group.appendChild(circle);
+group.appendChild(rect1);
+group.appendChild(rect2);
+svg.appendChild(group);
+
+// DOMに追加（例: bodyに追加）
+document.body.appendChild(svg);
