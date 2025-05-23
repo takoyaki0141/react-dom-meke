@@ -1,0 +1,107 @@
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    inset: 0;
+    background-color: rgba(0,0,0,0.4);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 1rem;
+}
+
+.modal-content {
+    background-color: #fefefe;
+    padding: 2rem;
+    border: 1px solid #888;
+    width: 100%;
+    max-width: 600px;
+    box-sizing: border-box;
+    text-align: center;
+    color: black;
+}
+
+.modal-content h2 {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+}
+
+.modal-content p {
+    font-size: 1.4rem;
+    text-align: left;
+}
+
+.modal-btn-area {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+.modal-cancel-btn,
+.modal-finish-btn {
+    flex: 1 1 40%;
+    min-width: 120px;
+    padding: 1rem;
+    font-size: 1.4rem;
+    border: 1px solid;
+    cursor: pointer;
+}
+
+.modal-cancel-btn {
+    background-color: #ffffff;
+    color: #03155C;
+    border-color: #707070;
+}
+
+.modal-finish-btn {
+    background-color: #03155C;
+    color: #ffffff;
+    border-color: #00266E;
+}
+
+
+
+
+
+
+あ
+
+<section class="confirm-section">
+
+    <div class="try-practice-area">
+        <button class="btn-try-practice" id="btn-try-practice">練習問題にトライ</button>
+    </div>
+    <p>※PCのみで動作します</p>
+
+    <div class="try-main-area">
+        <button class="btn-try-main" id="btn-try-main">本番に臨む</button>
+    </div>
+    <p>※個人情報登録のページに遷移します</p>
+    
+</section>
+
+const btnTryPractice = document.getElementById('btn-try-practice');
+const btnTryMain = document.getElementById('btn-try-main');
+
+// スマホかどうか判定する関数
+function isSmartphone() {
+    return /iPhone|Android.*Mobile/.test(navigator.userAgent);
+}
+
+btnTryPractice.addEventListener('click', (e) => {
+    if (isSmartphone()) {
+        window.location.href = "../../dpcEntry/mobilePractice.html"; // スマホ用の遷移先
+    } else {
+        window.location.href = "../../practice-round"; // PC用の遷移先
+    }
+});
+
+btnTryMain.addEventListener('click', (e) => {
+    if (isSmartphone()) {
+        window.location.href = "../../dpcEntry/mobileEntry.html"; // スマホ用の遷移先
+    } else {
+        window.location.href = "../../dpcEntry/entry.html"; // PC用の遷移先
+    }
+});
