@@ -1,0 +1,69 @@
+<script>
+(async () => {
+  // URLからurl_idを取得
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlId = urlParams.get('');
+
+  if (!urlId) {
+    window.location.href = '/not-found.html';
+    return;
+  }
+
+  // url_id の存在確認
+  try {
+    const response = await fetch(`/check-url.php?id=${encodeURIComponent(urlId)}`);
+    if (!response.ok) throw new Error("通信失敗");
+
+    const data = await response.json();
+    if (!data.exists) {
+      alert('指定されたコンテンツは存在しません。');
+      window.location.href = '/not-found.html'; // リダイレクト先
+    } else {
+      // 存在する場合：通常表示の処理をここで実行
+      // 例: fetch(`/get-content.php?id=${urlId}`) など
+      console.log("コンテンツを表示する処理を実行");
+    }
+  } catch (error) {
+    console.error('確認エラー:', error);
+    window.location.href = '/not-found.html';
+  }
+})();
+</script>
+
+
+<?php
+// DB接続
+$pdo = new PDO('mysql:host=localhost;dbname=your_db;charset=utf8', 'username', 'password');
+
+// パラメータ取得
+$url_id = $_GET['id'] ?? '';
+
+// プリペアドステートメントでSQLインジェクション対策
+$stmt = $pdo->prepare('SELECT COUNT(*) FROM your_table WHERE url_id = :url_id');
+$stmt->bindValue(':url_id', $url_id, PDO::PARAM_STR);
+$stmt->execute();
+$count = $stmt->fetchColumn();
+
+// JSONで結果返す
+header('Content-Type: application/json');
+echo json_encode(['exists' => $count > 0]);
+
+
+
+
+
+function generateUrlId(int $length = 16): string {
+    return bin2hex(random_bytes($length)); // 16バイト -> 32文字の16進文字列
+}
+
+
+
+ALTER TABLE your_table_name
+ADD COLUMN upd_at TIMESTAMP,
+ADD COLUMN is_finish BOOLEAN DEFAULT FALSE;
+
+
+
+
+
+
