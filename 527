@@ -1,0 +1,346 @@
+<?php
+// ==========================
+// .envファイルの読み込み
+// ==========================
+require_once __DIR__ . '/../vendor/autoload.php';
+
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
+$dotenv->load();
+
+return [
+    'db' => [
+        'host'     => $_ENV['DB_HOST'],
+        'dbname'   => $_ENV['DB_NAME'],
+        'username' => $_ENV['DB_USER'],
+        'password' => $_ENV['DB_PASS'],
+    ]
+];
+
+<?php
+class DBconnect {
+    private $dbh;
+    private $host;
+    private $dbname;
+    private $username;
+    private $password;
+    private $port;
+
+    public function __construct($host, $dbname, $username, $password, $port = 5432) {
+        $this->host     = $host;
+        $this->dbname   = $dbname;
+        $this->username = $username;
+        $this->password = $password;
+        $this->port     = $port;
+        $this->connect();
+    }
+
+    private function connect() {
+        try {
+            $dsn = "pgsql:host={$this->host};port={$this->port};dbname={$this->dbname};";
+            $this->dbh = new PDO($dsn, $this->username, $this->password);
+            $this->dbh->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $this->dbh->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            error_log("DB接続エラー: " . $e->getMessage());
+            exit("内部サーバーエラーが発生しました。");
+        }
+    }
+
+    public function getConnection() {
+        return $this->dbh;
+    }
+}
+
+
+
+<?php
+class Question {
+    private $db;
+    private $dbh;
+
+    public function __construct(DBconnect $db) {
+        $this->db  = $db;
+        $this->dbh = $db->getConnection();
+    }
+
+    // メールアドレスの登録と問題の割り当て
+    public function registerAddress($mAddress) {
+        try {
+            $uniqueUrlId    = $this->generateUrlId();
+            $randomSelected = $this->randomSelectFourQ();
+
+            if (count($randomSelected) !== 4) {
+                return ["status" => "error", "message" => "問題の選択に失敗しました。"];
+            }
+
+            $sql = "INSERT INTO mail_question (mail_address, url_id, q1_id, q2_id, q3_id, q4_id, ins_at)
+                    VALUES (:mail_address, :url_id, :q1_id, :q2_id, :q3_id, :q4_id, current_timestamp)";
+            $stmt = $this->dbh->prepare($sql);
+            $params = [
+                ':mail_address' => $mAddress,
+                ':url_id'       => $uniqueUrlId,
+                ':q1_id'        => $randomSelected[0],
+                ':q2_id'        => $randomSelected[1],
+                ':q3_id'        => $randomSelected[2],
+                ':q4_id'        => $randomSelected[3],
+            ];
+            $stmt->execute($params);
+
+            return ["status" => "success", "message" => "メールアドレスの登録が完了しました。"];
+        } catch (PDOException $e) {
+            error_log("registerAddressエラー: " . $e->getMessage());
+            return ["status" => "error", "message" => "内部サーバーエラーが発生しました。"];
+        }
+    }
+
+    private function generateUrlId() {
+        return bin2hex(random_bytes(16));
+    }
+
+    private function randomSelectFourQ() {
+        $sql = "SELECT q_id FROM question";
+        $stmt = $this->dbh->prepare($sql);
+        $stmt->execute();
+        $results = $stmt->fetchAll();
+
+        $classified = $this->classifyId($results);
+        if (in_array(null, $classified, true)) {
+            return [];
+        }
+
+        $randomSelected = [];
+        foreach ($classified as $qIdArray) {
+            if (empty($qIdArray)) {
+                return [];
+            }
+            $randKey = array_rand($qIdArray);
+            $randomSelected[] = $qIdArray[$randKey];
+        }
+
+        return $randomSelected;
+    }
+
+    private function classifyId($allQ) {
+        $allQ1 = $allQ2 = $allQ3 = $allQ4 = [];
+
+        foreach ($allQ as $q) {
+            $qId = $q['q_id'];
+
+            if (strpos($qId, 'ex') !== false) {
+                continue;
+            }
+
+            if (strpos($qId, '01A') !== false) {
+                $allQ1[] = $qId;
+            } elseif (strpos($qId, '02A') !== false) {
+                $allQ2[] = $qId;
+            } elseif (strpos($qId, '03A') !== false) {
+                $allQ3[] = $qId;
+            } elseif (strpos($qId, '04A') !== false) {
+                $allQ4[] = $qId;
+            } else {
+                return [null, null, null, null];
+            }
+        }
+
+        return [$allQ1, $allQ2, $allQ3, $allQ4];
+    }
+
+    // 他のメソッドも同様にエラーハンドリングと入力バリデーションを強化してください。
+}
+
+
+
+<?php
+// ==========================
+// セキュリティヘッダの設定
+// ==========================
+header("Content-Type: application/json; charset=UTF-8");
+header("X-Frame-Options: DENY");
+header("X-Content-Type-Options: nosniff");
+header("Referrer-Policy: no-referrer");
+header("Permissions-Policy: interest-cohort=()");
+header("Content-Security-Policy: default-src 'none'; frame-ancestors 'none';");
+
+// ==========================
+// セッションの開始とCSRFトークンの生成
+// ==========================
+session_start();
+
+function generateCsrfToken() {
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+function validateCsrfToken($token) {
+    return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+}
+
+// ==========================
+// タイムゾーンの設定
+// ==========================
+date_default_timezone_set('Asia/Tokyo');
+
+// ==========================
+// 必要なファイルの読み込み
+// ==========================
+require_once './class/database.php';
+require_once './class/question.php';
+$config = require 'config/dbConfig.php';
+
+// ==========================
+// データベース接続とクラスの初期化
+// ==========================
+$db = new DBconnect(
+    $config['db']['host'],
+    $config['db']['dbname'],
+    $config['db']['username'],
+    $config['db']['password']
+);
+$qControl = new Question($db);
+
+// ==========================
+// リクエストの処理
+// ==========================
+try {
+    $function = $_GET['func'] ?? '';
+
+    switch ($function) {
+        case 'registerAddress':
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                echo json_encode(['status' => 'error', 'message' => '不正なリクエストです。']);
+                exit;
+            }
+
+            if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+                echo json_encode(['status' => 'error', 'message' => 'CSRFトークンが一致しません。']);
+                exit;
+            }
+
+            $mAddress = trim($_POST['mail-address'] ?? '');
+            if (!filter_var($mAddress, FILTER_VALIDATE_EMAIL)) {
+                echo json_encode(['status' => 'error', 'message' => '無効なメールアドレスです。']);
+                exit;
+            }
+
+            $res = $qControl->registerAddress($mAddress);
+            echo json_encode($res);
+            break;
+
+        // 他のケースも同様にCSRFトークンの検証と入力バリデーションを追加してください。
+
+        default:
+            echo json_encode(['status' => 'error', 'message' => '無効な関数名です。']);
+            break;
+    }
+} catch (PDOException $e) {
+    error_log("function.phpエラー: " . $e->getMessage());
+    echo json_encode(['status' => 'error', 'message' => '内部サーバーエラーが発生しました。']);
+}
+
+
+envファイルを使用するためには、`vlucas/phpdotenv
+
+
+！！
+
+<?php
+// ==========================
+// セキュリティヘッダ送信
+// ==========================
+header("Content-Type: application/json; charset=UTF-8");
+header("X-Frame-Options: DENY");
+header("X-Content-Type-Options: nosniff");
+header("Referrer-Policy: no-referrer");
+header("Permissions-Policy: interest-cohort=()");
+header("Content-Security-Policy: default-src 'none'; frame-ancestors 'none';");
+
+// ==========================
+// セッション & CSRF
+// ==========================
+session_start();
+
+function generateCsrfToken() {
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+function validateCsrfToken($token) {
+    return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+}
+
+// ==========================
+// .env 読み込み (composer 必須)
+// ==========================
+require_once __DIR__ . '/../vendor/autoload.php';
+
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
+$dotenv->load();
+
+$config = [
+    'host'     => $_ENV['DB_HOST'],
+    'dbname'   => $_ENV['DB_NAME'],
+    'username' => $_ENV['DB_USER'],
+    'password' => $_ENV['DB_PASS'],
+];
+
+// ==========================
+// DB接続
+// ==========================
+try {
+    $dsn = "pgsql:host={$config['host']};port=5432;dbname={$config['dbname']};";
+    $dbh = new PDO($dsn, $config['username'], $config['password']);
+    $dbh->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch (PDOException $e) {
+    error_log("DB接続失敗: " . $e->getMessage());
+    echo json_encode(['status' => 'error', 'message' => 'Internal server error']);
+    exit;
+}
+
+// ==========================
+// 関数分岐
+// ==========================
+$func = $_GET['func'] ?? '';
+
+switch ($func) {
+    case 'registerAddress':
+        // CSRFトークンチェック
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !validateCsrfToken($_POST['csrf_token'] ?? '')) {
+            echo json_encode(['status' => 'error', 'message' => 'CSRF token mismatch']);
+            exit;
+        }
+
+        // 入力検証
+        $mAddress = trim($_POST['mail-address'] ?? '');
+        if (!filter_var($mAddress, FILTER_VALIDATE_EMAIL)) {
+            echo json_encode(['status' => 'error', 'message' => 'Invalid email address']);
+            exit;
+        }
+
+        try {
+            $urlId = bin2hex(random_bytes(16));
+            $sql = "INSERT INTO mail_question (mail_address, url_id, q1_id, q2_id, q3_id, q4_id, ins_at)
+                    VALUES (:mail, :url_id, '01A01', '02A01', '03A01', '04A01', current_timestamp)";
+            $stmt = $dbh->prepare($sql);
+            $stmt->execute([':mail' => $mAddress, ':url_id' => $urlId]);
+
+            echo json_encode(['status' => 'success', 'message' => 'Registration complete']);
+        } catch (PDOException $e) {
+            error_log("DB登録失敗: " . $e->getMessage());
+            echo json_encode(['status' => 'error', 'message' => 'Internal server error']);
+        }
+
+        break;
+
+    default:
+        echo json_encode(['status' => 'error', 'message' => 'Unknown function']);
+}
+
+// ==========================
+// XSS対策 (出力例、フロント側で使用)
+// ==========================
+// htmlspecialchars($data['user_input'], ENT_QUOTES, 'UTF-8')
