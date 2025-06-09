@@ -1,0 +1,119 @@
+public function updDAD()
+{
+    try {
+        $dadStatusList = $this->fetchDadStatus();
+        $apiControl = new APIControl($this->db, $this->dbS);
+        $userList = $apiControl->fetchMemberList();
+
+        $passedUsers = $this->getPassedDADUsers($userList, $dadStatusList);
+
+        if (!empty($passedUsers)) {
+            $this->bulkUpdateDADStatus($passedUsers);
+        }
+
+        return ["status" => "success", "message" => "DADのデータ更新に成功しました。"];
+    } catch (Exception $e) {
+        return ["status" => "error", "message" => "DADのデータ更新に失敗しました。" . $e->getMessage()];
+    }
+}
+
+private function getPassedDADUsers(array $userList, array $dadStatusList): array
+{
+    $passedUsers = [];
+
+    $dadStatusMap = [];
+    foreach ($dadStatusList as $entry) {
+        if ($entry['c_id'] == 392 && $entry['result'] === '合格') {
+            $dadStatusMap[$entry['user_id']] = $entry['todate'];
+        }
+    }
+
+    foreach ($userList as $user) {
+        $userId = $user['user_id'];
+        if (isset($dadStatusMap[$userId])) {
+            $passedUsers[] = [
+                'user_id' => $userId,
+                'dad_pass_date' => $dadStatusMap[$userId]
+            ];
+        }
+    }
+
+    return $passedUsers;
+}
+
+private function bulkUpdateDADStatus(array $passedUsers): void
+{
+    $this->dbMain->beginTransaction();
+
+    try {
+        $sql = "UPDATE dad_test SET passed_dad_test = 1, dad_test_pass_date = :dad_test_pass_date WHERE user_id = :user_id";
+        $stmt = $this->dbMain->prepare($sql);
+
+        foreach ($passedUsers as $user) {
+            $stmt->execute([
+                ':user_id' => $user['user_id'],
+                ':dad_test_pass_date' => $user['dad_pass_date']
+            ]);
+        }
+
+        $this->dbMain->commit();
+    } catch (PDOException $e) {
+        $this->dbMain->rollBack();
+        throw new RuntimeException("DADステータスの一括更新に失敗しました: " . $e->getMessage());
+    }
+}
+
+private function fetchDadStatus(): array
+{
+    $url = "http://athqwe05/~material_download/web_api/check_req_grad.php?api_key=pfeg8pwpq";
+    $curl = curl_init();
+
+    curl_setopt_array($curl, [
+        CURLOPT_URL => $url,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => false,
+        CURLOPT_FOLLOWLOCATION => true,
+    ]);
+
+    $res = curl_exec($curl);
+    curl_close($curl);
+
+    if (!$res) {
+        throw new RuntimeException("API実行中にエラーが発生しました");
+    }
+
+    return json_decode($res, true);
+}
+
+
+
+
+あ
+
+document.addEventListener('DOMContentLoaded', function () {
+  const outer = document.querySelector('.outer');
+  const inner = document.querySelector('.inner');
+
+  const consentPippByName = document.querySelector('[name=CONSENT_PIPP]');
+  const consentPippById = document.getElementById('CONSENT_PIPP');
+
+  const consentReasonByName = document.querySelector('[name=CONSENT_REASON]');
+  const consentReasonById = document.getElementById('CONSENT_REASON');
+
+  outer.addEventListener('scroll', function () {
+    const innerHeight = inner.offsetHeight;
+    const outerHeight = outer.offsetHeight;
+    const outerBottom = innerHeight - outerHeight;
+
+    if (outer.scrollTop >= outerBottom) {
+      if (consentPippByName) consentPippByName.removeAttribute('disabled');
+      if (consentPippById) consentPippById.removeAttribute('disabled');
+
+      if (consentReasonByName) consentReasonByName.removeAttribute('disabled');
+      if (consentReasonById) consentReasonById.removeAttribute('disabled');
+    }
+  });
+});
+
+
