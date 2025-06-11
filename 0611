@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>背景テスト</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 200vh; /* デモ用に縦長に */
+      position: relative;
+    }
+
+    .background-fixed {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: url('your-image.jpg'); /* ←ここを画像に差し替え */
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+      z-index: -2;
+    }
+
+    .overlay-top {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100vh;
+      background-color: white;
+      opacity: 0; /* 完全透過 */
+      z-index: -1;
+    }
+
+    .overlay-bottom {
+      position: fixed;
+      top: 100vh;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: white;
+      opacity: 0.9; /* 背景画像を0.1に見せるため */
+      z-index: -1;
+    }
+
+    .content {
+      position: relative;
+      z-index: 0;
+      padding: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="background-fixed"></div>
+  <div class="overlay-top"></div>
+  <div class="overlay-bottom"></div>
+
+  <div class="content">
+    <h1>最初の画面</h1>
+    <p>スクロールすると背景が薄くなります。</p>
+    <div style="height: 200vh;"></div>
+  </div>
+</body>
+</html>
