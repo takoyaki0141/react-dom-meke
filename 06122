@@ -1,0 +1,46 @@
+/* スクロール中、prize-sectionの範囲でsidebarを白背景・青文字にする */
+.sidebar.white-bg {
+    background-color: #ffffff;
+}
+
+.sidebar.white-bg a {
+    color: #010A3E !important;
+}
+
+.sidebar.white-bg .sidebar-str:before {
+    border-top: 1.5px solid #010A3E;
+}
+
+
+<script>
+    window.addEventListener('scroll', function () {
+        const sidebar = document.querySelector('.sidebar');
+        const prize = document.querySelector('.prize-section');
+        const confirm = document.querySelector('.confirm-section');
+        const scrollY = window.scrollY;
+
+        const prizeTop = prize.offsetTop;
+        const prizeBottom = prizeTop + prize.offsetHeight;
+        const sidebarHeight = sidebar.offsetHeight;
+        const confirmTop = confirm.offsetTop;
+
+        const offsetTop = 200; // sticky開始位置と合わせる
+        const currentTop = scrollY + offsetTop;
+
+        // 【1】sidebarをstickyまたはabsoluteに切り替え
+        if (currentTop + sidebarHeight >= confirmTop) {
+            sidebar.style.position = 'absolute';
+            sidebar.style.top = (confirmTop - sidebarHeight) + 'px';
+        } else {
+            sidebar.style.position = 'sticky';
+            sidebar.style.top = offsetTop + 'px';
+        }
+
+        // 【2】prizeセクションの中に入ったら白背景＋青文字に切り替え
+        if (currentTop >= prizeTop && currentTop <= prizeBottom) {
+            sidebar.classList.add('white-bg');
+        } else {
+            sidebar.classList.remove('white-bg');
+        }
+    });
+</script>
