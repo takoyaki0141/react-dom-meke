@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>軽量背景テスト</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: sans-serif;
+    }
+
+    /* 小さめ背景画像を使用（800×600） */
+    .background {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: url('https://picsum.photos/id/1015/800/600');
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+      z-index: -2;
+    }
+
+    section {
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      position: relative;
+      z-index: 0;
+    }
+
+    .first {
+      background: transparent;
+      color: white;
+    }
+
+    .a {
+      background-color: rgba(0, 85, 255, 0.6);
+      color: white;
+    }
+
+    .b {
+      background-color: white;
+      color: #010A3E;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 背景画像（軽量） -->
+  <div class="background"></div>
+
+  <!-- セクションたち -->
+  <section class="first">
+    最初の画面：背景画像がそのまま見える（非透過）
+  </section>
+
+  <section class="a">
+    .a セクション：青透過＋背景画像
+  </section>
+
+  <section class="b">
+    .b セクション：白背景（背景画像見えない）
+  </section>
+
+  <section class="a">
+    .a セクション（再び透けた背景）
+  </section>
+
+</body>
+</html>
