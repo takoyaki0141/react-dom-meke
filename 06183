@@ -1,0 +1,73 @@
+#!/bin/bash
+
+# -------------------------------------------
+# 設定
+# -------------------------------------------
+
+SEARCH_DIR="/var/www/html/temp/replace_trademarks"
+TRADEMARKS_JP_TXT="/opt/replace_trademarks/trademarks_jp.txt"
+DATE=$(date +"%Y%m%d")
+LOG_DIR="/opt/replace_trademarks/log"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/replace_log_$DATE.txt"
+
+# 文字コード設定（日本語対応）
+export LANG=ja_JP.UTF-8
+export LC_ALL=ja_JP.UTF-8
+
+# -------------------------------------------
+# ログ開始
+# -------------------------------------------
+printf "[%s] --- 全体置換処理開始 ---\n" "$(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE"
+
+# -------------------------------------------
+# 商標語を1行ずつ読み取り処理
+# -------------------------------------------
+while IFS= read -r LINE || [[ -n "$LINE" ]]; do
+    # 空行スキップ
+    if [[ -z "$LINE" ]]; then
+        continue
+    fi
+
+    BEFORE="$LINE"
+    AFTER="${LINE}&reg;"
+
+    printf "[%s] 開始: '%s' → '%s'\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$BEFORE" "$AFTER" >> "$LOG_FILE"
+
+    COUNT=0
+    FILES=$(find "$SEARCH_DIR" -type f -name "*.html")
+
+    for FILE in $FILES; do
+        if grep -q "$BEFORE" "$FILE"; then
+            echo "処理中: $FILE"
+
+            # バックアップファイル名の重複を避ける処理
+            BASE_BACKUP_FILE="${FILE}.${DATE}.bak"
+            BACKUP_FILE="$BASE_BACKUP_FILE"
+            N=1
+            while [[ -e "$BACKUP_FILE" ]]; do
+                BACKUP_FILE="${FILE}.${DATE}_$N.bak"
+                N=$((N + 1))
+            done
+
+            # バックアップ作成
+            cp "$FILE" "$BACKUP_FILE"
+
+            # Perl正規表現で &reg; が付いていない BEFORE のみを AFTER に置換
+            perl -i -pe "s/\\b$BEFORE\\b(?!&reg;)/$AFTER/g" "$FILE"
+
+            # ログ出力
+            printf "[%s] 書き換え: %s → backup: %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$FILE" "$BACKUP_FILE" >> "$LOG_FILE"
+            COUNT=$((COUNT + 1))
+        fi
+    done
+
+    printf "[%s] 完了: '%s' 対象: %d 件\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$BEFORE" "$COUNT" >> "$LOG_FILE"
+    echo "置換完了: $BEFORE → $AFTER ($COUNT 件)"
+
+done < "$TRADEMARKS_JP_TXT"
+
+# -------------------------------------------
+# 全体終了ログ
+# -------------------------------------------
+printf "[%s] --- 全体置換処理終了 ---\n" "$(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE"
