@@ -1,0 +1,144 @@
+<?php
+$scriptPath = '/opt/replace_trademarks/replace.sh';
+$logPath = __DIR__ . '/replace_log.txt';
+
+$output = shell_exec("bash " . escapeshellarg($scriptPath) . " 2>&1");
+file_put_contents($logPath, $output . PHP_EOL, FILE_APPEND);
+echo nl2br(htmlspecialchars($output));
+
+
+あ
+
+#!/bin/bash
+
+# 設定
+SEARCH_DIR="/var/www/html"
+BEFORE="target"
+AFTER="target&reg;"
+DATE=$(date +"%Y%m%d")
+BACKUP_SUFFIX=".$DATE.bak"
+
+# 対象ファイル（htmlファイルのみ）
+FILES=$(find "$SEARCH_DIR" -type f -name "*.html")
+
+for FILE in $FILES; do
+    # grepで置換対象が含まれるが、既に AFTER が含まれていない場合のみ処理
+    if grep -q "$BEFORE" "$FILE" && ! grep -q "$AFTER" "$FILE"; then
+        echo "処理中: $FILE"
+
+        # バックアップファイル名を生成
+        BACKUP_FILE="${FILE}${BACKUP_SUFFIX}"
+        cp "$FILE" "$BACKUP_FILE"
+
+        # Perlで未置換の target のみを置換（target&reg; はスルー）
+        perl -i -pe 's/\btarget\b(?!&reg;)/target&reg;/g' "$FILE"
+    fi
+done
+
+echo "置換完了"
+
+
+さ
+chmod +x /opt/replace_trademarks/replace.sh
+
+apacheの実行権限なければ
+www-data ALL=(ALL) NOPASSWD: /opt/replace_trademarks/replace.sh
+
+perl -v
+
+ぱーるないとき
+#!/bin/bash
+
+# 設定
+SEARCH_DIR="/var/www/html"
+BEFORE="target"
+AFTER="target&reg;"
+DATE=$(date +"%Y%m%d")
+BACKUP_SUFFIX=".$DATE.bak"
+TEMP_MARKER="__TMP_REPLACED__"
+
+FILES=$(find "$SEARCH_DIR" -type f -name "*.html")
+
+for FILE in $FILES; do
+    if grep -q "$BEFORE" "$FILE"; then
+        echo "処理中: $FILE"
+        BACKUP_FILE="${FILE}${BACKUP_SUFFIX}"
+        cp "$FILE" "$BACKUP_FILE"
+
+        # 1. すでに置換済みのものを一時マークに変更
+        sed -i "s/${AFTER}/${TEMP_MARKER}/g" "$FILE"
+
+        # 2. 残った target を target&reg; に置換
+        sed -i "s/${BEFORE}/${AFTER}/g" "$FILE"
+
+        # 3. 一時マークを戻す
+        sed -i "s/${TEMP_MARKER}/${AFTER}/g" "$FILE"
+    fi
+done
+
+echo "置換完了"
+TEMP_MARKER="__TMP_$(uuidgen | tr -d '-')__"
+
+
+最終
+
+#!/bin/bash
+
+# 設定
+SEARCH_DIR="/var/www/html"
+BEFORE="target"
+AFTER="target&reg;"
+DATE=$(date +"%Y%m%d")
+BACKUP_SUFFIX=".$DATE.bak"
+TEMP_MARKER="__TMP_REPLACED__"
+LOG_FILE="/var/log/replace_trademarks/replace_log_$DATE.txt"
+
+# ログディレクトリ作成（なければ）
+mkdir -p "$(dirname "$LOG_FILE")"
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] --- 置換処理開始 ---" >> "$LOG_FILE"
+
+COUNT=0
+FILES=$(find "$SEARCH_DIR" -type f -name "*.html")
+
+for FILE in $FILES; do
+    if grep -q "$BEFORE" "$FILE"; then
+        echo "処理中: $FILE"
+        BACKUP_FILE="${FILE}${BACKUP_SUFFIX}"
+        cp "$FILE" "$BACKUP_FILE"
+
+        # 一時的に置換済みのものを退避
+        sed -i "s/${AFTER}/${TEMP_MARKER}/g" "$FILE"
+        sed -i "s/${BEFORE}/${AFTER}/g" "$FILE"
+        sed -i "s/${TEMP_MARKER}/${AFTER}/g" "$FILE"
+
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] 書き換え: $FILE → backup: $BACKUP_FILE" >> "$LOG_FILE"
+        COUNT=$((COUNT + 1))
+    fi
+done
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] --- 置換処理終了: $COUNT 件 ---" >> "$LOG_FILE"
+echo "置換完了: $COUNT 件"
+
+
+
+<?php
+$scriptPath = '/opt/replace_trademarks/replace.sh';
+$phpLogPath = __DIR__ . '/replace_php_log.txt';
+
+$timestamp = date('Y-m-d H:i:s');
+$output = shell_exec("bash " . escapeshellarg($scriptPath) . " 2>&1");
+
+// PHP側のログ出力
+file_put_contents($phpLogPath, "[$timestamp] 実行開始\n$output\n", FILE_APPEND);
+
+// 画面にも出力
+echo nl2br(htmlspecialchars($output));
+
+
+chmod +x /opt/replace_trademarks/replace.sh
+mkdir -p /var/log/replace_trademarks
+chown www-data:www-data /var/log/replace_trademarks
+chmod 755 /var/log/replace_trademarks
+
+FILES=$(find "$SEARCH_DIR" -type f \( -name "*.html" -o -name "*.php" \))
